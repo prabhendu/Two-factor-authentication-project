@@ -56,19 +56,19 @@ public class SecLogin {
 	//private static final int DIST_FEAT_CNT = 15;
 	
 	/** Error correcting parameter */
-	private static final int max_errors = 1;
+	private static final int max_errors = 2;
 	
 	/** Logger */
 	private static final Logger log = Logger.getLogger(SecLogin.class.getName());
 	
 	/** Directory of history files */
-	private static final String hist_dir = "hist/";
+	private static final String hist_dir = "hist1/";
 	
 	/** Directory of instruction files */
-	private static final String ab_dir = "ab/";
+	private static final String ab_dir = "ab1/";
 	
 	/** Directory of log files */
-	private static final String log_dir = "log/";
+	private static final String log_dir = "log1/";
 	
 	
 	/**
@@ -230,206 +230,83 @@ public class SecLogin {
 			
 		} else {
 			// Code part for subsequent logins (after initial login)
+			
 			// Retrieve alpha beta values for this login attempt
-			Path instruction_path = Paths.get(ab_dir + lf.username + String.valueOf(lf.fingerprint) +".ab");
-			byte[] instruction_bytes = Files.readAllBytes(instruction_path);
-			byte[] instruction_key = password.getBytes();
-			instruction_key = Arrays.copyOf(instruction_key, 16);
-			SecretKeySpec secretkeyspec = new SecretKeySpec(instruction_key,"AES");
-			Cipher cipher = Cipher.getInstance("AES");
-			String instruction_decrypted_string = null;
-			try {
-				cipher.init(Cipher.DECRYPT_MODE, secretkeyspec);
-				byte[] instruction_decrypted = cipher.doFinal(instruction_bytes);
-				instruction_decrypted_string = new String(instruction_decrypted);
-			} catch (BadPaddingException e) {
-				System.out.println(e.getMessage());
-				writeLog(lf,"Couldnot decrypt Instruction file",feat_means, feat_devs);
-				return new Greeting(lf.username,false,"Couldnot decrypt Instruction file");
-			}	
-			Scanner scan = new Scanner(instruction_decrypted_string);
-			if(!scan.nextLine().equals("Instruction File")) {
-				scan.close();
-				log.info("Wrong password");
-				//return false;
-				writeLog(lf,"Wrong text password",feat_means, feat_devs);
-				return new Greeting(lf.username,false,"Wrong password");
-			}
-			
-			for(int i = 0; i < features_length; ++i) {
-				alpha[i] = new BigInteger(scan.nextLine());
-				beta[i]  = new BigInteger(scan.nextLine());
-			}
-			scan.close();
-			
-			// Calculate X and Y values
-			BigInteger X[] = new BigInteger[features_length],
-			           Y[] = new BigInteger[features_length];
-			
-			boolean hist_decrypt_success = false;
-			BigInteger hpwd_sum = new BigInteger("0");
-			Scanner hist_file_scanner = null;
-			// Introducing error correction
-			int m=0;	
-			while ( m < features_length-max_errors) {
-				for(int i = 0; i < features_length; ++i) {
-					// m <= i < m+maxError   ==>>  correcting errors
-					if(i >= m && i < m+max_errors) {
-						if(lf.features[i] >= THRESH) {
-							X[i] = BigInteger.valueOf((i + 1) << 1);
-							BigInteger gr_pwd = calculate_hash(password, (i + 1) << 1);
-							Y[i] = alpha[i].divide(gr_pwd.mod(q));
-						} else {
-							X[i] = BigInteger.valueOf(((i + 1) << 1) + 1);
-							BigInteger gr_pwd = calculate_hash(password, ((i + 1) << 1) + 1);
-							Y[i] = beta[i].divide(gr_pwd.mod(q));
-						}
-					} else {
-						if(lf.features[i] < THRESH) {
-							X[i] = BigInteger.valueOf((i + 1) << 1);
-							BigInteger gr_pwd = calculate_hash(password, (i + 1) << 1);
-							Y[i] = alpha[i].divide(gr_pwd.mod(q));
-						} else {
-							X[i] = BigInteger.valueOf(((i + 1) << 1) + 1);
-							BigInteger gr_pwd = calculate_hash(password, ((i + 1) << 1) + 1);
-							Y[i] = beta[i].divide(gr_pwd.mod(q));
-						}
-					}
-				}
-				//do all processing
-				// Calculate lambda - Lagrange's Coefficient
-				BigInteger[] lambda = new BigInteger[features_length];
-				for(int i = 0; i < features_length; ++i) {
-					BigInteger lambda_num = new BigInteger("1"),
-					           lambda_den = new BigInteger("1");
-					lambda[i] = new BigInteger("1");
-					for(int j = 0; j < features_length; ++j) {
-						if(i != j) {
-							lambda_num = lambda_num.multiply(X[j]);
-							lambda_den = lambda_den.multiply(X[j].subtract(X[i]));
-						}
-					}
-					lambda[i] = lambda[i].multiply(Y[i]).multiply(lambda_num);
-					lambda[i] = lambda[i].divide(lambda_den);
-				}
-				
-				// Calculate hpwd' - new hardened password
-				hpwd_sum = new BigInteger("0");
-				for(int i = 0; i < features_length; ++i) {
-					hpwd_sum = hpwd_sum.add(lambda[i]).mod(q);
-				}
-				System.out.println("Calculated hpwd : " + hpwd_sum);
-				
-				// Open the history file for this login attempt
-				Path hist_path = Paths.get(hist_dir + lf.username + String.valueOf(lf.fingerprint) +".hist");
-				byte[] hist_bytes = Files.readAllBytes(hist_path);
-				byte[] hist_key = hpwd_sum.toByteArray();
-				hist_key = Arrays.copyOf(hist_key, 16);
-				secretkeyspec = new SecretKeySpec(hist_key,"AES");
-				cipher = Cipher.getInstance("AES");
-				String hist_decrypted_string = null;
-				try {
-					cipher.init(Cipher.DECRYPT_MODE, secretkeyspec);
-					byte[] hist_decrypted = cipher.doFinal(hist_bytes);
-					hist_decrypted_string = new String(hist_decrypted);
-				} catch (BadPaddingException e) {
-					log.info("Could not decrypt history file");
-					//writeLog(lf,"Couldnot decrypt history file",feat_means, feat_devs);
-					//return new Greeting(lf.username,false,"Couldnot decrypt history file");
-					m = m+1;
-					continue;
-				}
-				
-				// Verify that the static string in history file retrieved is correct
-				hist_file_scanner = new Scanner(hist_decrypted_string);
-				String hist_magic_text = hist_file_scanner.nextLine();
-				if(!HIST_TEXT.equals(hist_magic_text)) {
-					hist_file_scanner.close();
-					log.info("Wrong hardened password..Nice try..!");
-					//writeLog(lf,"Wrong hardened password",feat_means, feat_devs);
-					//return new Greeting(lf.username,false,"Wrong hardened password");
-					m = m+1;
-					continue;
-				} else {
-					hist_decrypt_success = true;
-					break;
-					// m -> m+maxErrors is responsible for the correct password
-				}
-				
-				// if history file decrypted, exit loop
-				//m = m + max_errors ;
-				//m=m+1;
-			}
-			
-			if(!hist_decrypt_success) {
-				writeLog(lf,"Wrong hardened password-after correction",feat_means, feat_devs);
-				return new Greeting(lf.username,false,"Wrong hardened password");
-			}
-			
-//			for(int i = 0; i < features_length; ++i) {
-//				if(lf.features[i] < THRESH) {
-//					X[i] = BigInteger.valueOf((i + 1) << 1);
-//					BigInteger gr_pwd = calculate_hash(password, (i + 1) << 1);
-//					Y[i] = alpha[i].divide(gr_pwd.mod(q));
-//				} else {
-//					X[i] = BigInteger.valueOf(((i + 1) << 1) + 1);
-//					BigInteger gr_pwd = calculate_hash(password, ((i + 1) << 1) + 1);
-//					Y[i] = beta[i].divide(gr_pwd.mod(q));
-//				}
-//			}
-			
-//			// Calculate lambda - Lagrange's Coefficient
-//			BigInteger[] lambda = new BigInteger[features_length];
-//			for(int i = 0; i < features_length; ++i) {
-//				BigInteger lambda_num = new BigInteger("1"),
-//				           lambda_den = new BigInteger("1");
-//				lambda[i] = new BigInteger("1");
-//				for(int j = 0; j < features_length; ++j) {
-//					if(i != j) {
-//						lambda_num = lambda_num.multiply(X[j]);
-//						lambda_den = lambda_den.multiply(X[j].subtract(X[i]));
-//					}
-//				}
-//				lambda[i] = lambda[i].multiply(Y[i]).multiply(lambda_num);
-//				lambda[i] = lambda[i].divide(lambda_den);
-//			}
-//			
-//			// Calculate hpwd' - new hardened password
-//			BigInteger hpwd_sum = new BigInteger("0");
-//			for(int i = 0; i < features_length; ++i) {
-//				hpwd_sum = hpwd_sum.add(lambda[i]).mod(q);
-//			}
-//			
-//			System.out.println("Calculated hpwd : " + hpwd_sum);
-			
-//			// Open the history file for this login attempt
-//			Path hist_path = Paths.get(lf.username + String.valueOf(lf.fingerprint) +".hist");
-//			byte[] hist_bytes = Files.readAllBytes(hist_path);
-//			byte[] hist_key = hpwd_sum.toByteArray();
-//			hist_key = Arrays.copyOf(hist_key, 16);
-//			secretkeyspec = new SecretKeySpec(hist_key,"AES");
-//			cipher = Cipher.getInstance("AES");
-//			String hist_decrypted_string = null;
+//			Path instruction_path = Paths.get(ab_dir + lf.username + String.valueOf(lf.fingerprint) +".ab");
+//			byte[] instruction_bytes = Files.readAllBytes(instruction_path);
+//			byte[] instruction_key = password.getBytes();
+//			instruction_key = Arrays.copyOf(instruction_key, 16);
+//			SecretKeySpec secretkeyspec = new SecretKeySpec(instruction_key,"AES");
+//			Cipher cipher = Cipher.getInstance("AES");
+//			String instruction_decrypted_string = null;
 //			try {
 //				cipher.init(Cipher.DECRYPT_MODE, secretkeyspec);
-//				byte[] hist_decrypted = cipher.doFinal(hist_bytes);
-//				hist_decrypted_string = new String(hist_decrypted);
+//				byte[] instruction_decrypted = cipher.doFinal(instruction_bytes);
+//				instruction_decrypted_string = new String(instruction_decrypted);
 //			} catch (BadPaddingException e) {
-//				writeLog(lf,"Couldnot decrypt history file",feat_means, feat_devs);
-//				return new Greeting(lf.username,false,"Couldnot decrypt history file");
+//				System.out.println(e.getMessage());
+//				writeLog(lf,"Couldnot decrypt Instruction file",feat_means, feat_devs);
+//				return new Greeting(lf.username,false,"Couldnot decrypt Instruction file");
+//			}	
+//			Scanner scan = new Scanner(instruction_decrypted_string);
+//			if(!scan.nextLine().equals("Instruction File")) {
+//				scan.close();
+//				log.info("Wrong password");
+//				//return false;
+//				writeLog(lf,"Wrong text password",feat_means, feat_devs);
+//				return new Greeting(lf.username,false,"Wrong password");
 //			}
 //			
-//			// Verify that the static string in history file retrieved is correct
-//			Scanner hist_file_scanner = new Scanner(hist_decrypted_string);
-//			String hist_magic_text = hist_file_scanner.nextLine();
-//			if(!HIST_TEXT.equals(hist_magic_text)) {
-//				hist_file_scanner.close();
-//				log.info("Wrong hardened password..Nice try..!");
-//				writeLog(lf,"Wrong hardened password",feat_means, feat_devs);
-//				return new Greeting(lf.username,false,"Wrong hardened password");
+//			for(int i = 0; i < features_length; ++i) {
+//				alpha[i] = new BigInteger(scan.nextLine());
+//				beta[i]  = new BigInteger(scan.nextLine());
 //			}
+//			scan.close();
+//			
+//			// Calculate X and Y values
+//			BigInteger X[] = new BigInteger[features_length],
+//			           Y[] = new BigInteger[features_length];
+//			
+//			boolean hist_decrypt_success = false;
+//			BigInteger hpwd_sum = new BigInteger("0");
+//			Scanner hist_file_scanner = null;
+			
+			FuncReturn result = null;
+			for(int i=0;i<=max_errors;i++) {
+				switch(i) {
+				case 0:
+					result = decryptHistory(password, lf, features_length);
+					break;
+				case 1:
+					result = decryptHistory_1(password, lf, features_length);
+					break;
+				case 2:
+					result = decryptHistory_2(password, lf, features_length);
+					break;
+				default:
+					System.out.println("Can't correct more than two errors");
+					break;
+				}
+				
+				if (result.greeting.getAttempt() == false) {
+					System.out.format("Login failed when max_error correction is %d\n", i);
+					continue;
+				} else {
+					break;
+				}
+				
+			}
+			
+			//FuncReturn result = decryptHistory_1(password, lf, features_length);
+			
+			if (result.greeting.getAttempt() == false) {
+				return result.greeting;
+			}
+			BigInteger hpwd_sum = result.new_hpwd;
 			
 			// Read history file contents
+			Scanner hist_file_scanner = new Scanner(result.greeting.getQuote());
+			System.out.println(hist_file_scanner.nextLine());
 			int login_count = Integer.parseInt(hist_file_scanner.nextLine());
 			LoginFeatures[] feat_arr = new LoginFeatures[login_count];
 			for(int i = 0; i < login_count; ++i) {
@@ -506,7 +383,7 @@ public class SecLogin {
 			}
 			pw.close();
 			char[] instruction_contents = cawInstruction.toCharArray();
-			instruction_key = password.getBytes();
+			byte[] instruction_key = password.getBytes();
 			byte[] instruction_encrypted = encrypt(instruction_contents,instruction_key);
 			FileOutputStream fos = new FileOutputStream(ab_dir + lf.username + String.valueOf(lf.fingerprint) + ".ab");
 			fos.write(instruction_encrypted);
@@ -550,8 +427,6 @@ public class SecLogin {
 			
 			// Encrypt history file contents
 			char[] hist_contents = Arrays.copyOf(caw.toCharArray(), HIST_SIZE - 1);
-//			hist_key = hpwd_sum.toByteArray();
-//			byte[] hist_encrypted = encrypt(hist_contents, hist_key);
 			byte[] hist_encrypted = encrypt(hist_contents, hpwd_sum.toByteArray());
 			fos.write(hist_encrypted);
 			fos.close();
@@ -561,6 +436,426 @@ public class SecLogin {
 		writeLog(lf,"Login Success",feat_means,feat_devs);
 		return new Greeting(lf.username,true,"Successfully logged in..!");
 	}
+	
+	/** Function to calculate hpwd without error correction
+	 * 
+	 * @param password
+	 * @param lf
+	 * @return
+	 * @throws Exception
+	 */
+	private static FuncReturn decryptHistory (String password, LoginFeatures lf, int features_length) throws Exception {
+		// Calculate X and Y values
+		BigInteger hpwd_sum = new BigInteger("0");
+		Path instruction_path = Paths.get(ab_dir + lf.username + String.valueOf(lf.fingerprint) +".ab");
+		byte[] instruction_bytes = Files.readAllBytes(instruction_path);
+		byte[] instruction_key = password.getBytes();
+		instruction_key = Arrays.copyOf(instruction_key, 16);
+		SecretKeySpec secretkeyspec = new SecretKeySpec(instruction_key,"AES");
+		Cipher cipher = Cipher.getInstance("AES");
+		String instruction_decrypted_string = null;
+		try {
+			cipher.init(Cipher.DECRYPT_MODE, secretkeyspec);
+			byte[] instruction_decrypted = cipher.doFinal(instruction_bytes);
+			instruction_decrypted_string = new String(instruction_decrypted);
+		} catch (BadPaddingException e) {
+			System.out.println(e.getMessage());
+			writeLog(lf,"Couldnot decrypt Instruction file",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Couldnot decrypt Instruction file"),hpwd_sum);
+		}	
+		Scanner scan = new Scanner(instruction_decrypted_string);
+		if(!scan.nextLine().equals("Instruction File")) {
+			scan.close();
+			log.info("Wrong password");
+			//return false;
+			writeLog(lf,"Wrong text password",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong password"),hpwd_sum);
+		}
+		
+		//int features_length = lf.features.length;
+		BigInteger[] alpha = new BigInteger[features_length],
+					  beta = new BigInteger[features_length];
+		
+		for(int i = 0; i < features_length; ++i) {
+			alpha[i] = new BigInteger(scan.nextLine());
+			beta[i]  = new BigInteger(scan.nextLine());
+		}
+		scan.close();
+		
+		BigInteger X[] = new BigInteger[features_length],
+		           Y[] = new BigInteger[features_length];
+		
+		for(int i = 0; i < features_length; ++i) {
+			if(lf.features[i] < THRESH) {
+				X[i] = BigInteger.valueOf((i + 1) << 1);
+				BigInteger gr_pwd = calculate_hash(password, (i + 1) << 1);
+				Y[i] = alpha[i].divide(gr_pwd.mod(q));
+			} else {
+				X[i] = BigInteger.valueOf(((i + 1) << 1) + 1);
+				BigInteger gr_pwd = calculate_hash(password, ((i + 1) << 1) + 1);
+				Y[i] = beta[i].divide(gr_pwd.mod(q));
+			}
+		}
+		
+		// Calculate lambda - Lagrange's Coefficient
+		BigInteger[] lambda = new BigInteger[features_length];
+		for(int i = 0; i < features_length; ++i) {
+			BigInteger lambda_num = new BigInteger("1"),
+			           lambda_den = new BigInteger("1");
+			lambda[i] = new BigInteger("1");
+			for(int j = 0; j < features_length; ++j) {
+				if(i != j) {
+					lambda_num = lambda_num.multiply(X[j]);
+					lambda_den = lambda_den.multiply(X[j].subtract(X[i]));
+				}
+			}
+			lambda[i] = lambda[i].multiply(Y[i]).multiply(lambda_num);
+			lambda[i] = lambda[i].divide(lambda_den);
+		}
+		
+		// Calculate hpwd' - new hardened password
+		hpwd_sum = new BigInteger("0");
+		for(int i = 0; i < features_length; ++i) {
+			hpwd_sum = hpwd_sum.add(lambda[i]).mod(q);
+		}
+		
+		System.out.println("Calculated hpwd : " + hpwd_sum);
+		
+		// Open the history file for this login attempt
+		Path hist_path = Paths.get(hist_dir + lf.username + String.valueOf(lf.fingerprint) +".hist");
+		byte[] hist_bytes = Files.readAllBytes(hist_path);
+		byte[] hist_key = hpwd_sum.toByteArray();
+		hist_key = Arrays.copyOf(hist_key, 16);
+		secretkeyspec = new SecretKeySpec(hist_key,"AES");
+		cipher = Cipher.getInstance("AES");
+		String hist_decrypted_string = null;
+		try {
+			cipher.init(Cipher.DECRYPT_MODE, secretkeyspec);
+			byte[] hist_decrypted = cipher.doFinal(hist_bytes);
+			hist_decrypted_string = new String(hist_decrypted);
+		} catch (BadPaddingException e) {
+			writeLog(lf,"Couldnot decrypt history file",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Couldnot decrypt history file"),hpwd_sum);
+		}
+		
+		// Verify that the static string in history file retrieved is correct
+		Scanner hist_file_scanner = new Scanner(hist_decrypted_string);
+		String hist_magic_text = hist_file_scanner.nextLine();
+		if(!HIST_TEXT.equals(hist_magic_text)) {
+			hist_file_scanner.close();
+			log.info("Wrong hardened password..Nice try..!");
+			writeLog(lf,"Wrong hardened password",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong hardened password"),hpwd_sum);
+		}
+		
+		hist_file_scanner.close();
+
+		return new FuncReturn(new Greeting(lf.username,true, hist_decrypted_string),hpwd_sum);
+	}
+
+	/** Function to correct one error in latency features
+	 * 
+	 * @param password
+	 * @param lf
+	 * @return
+	 * @throws Exception
+	 */
+	private static FuncReturn decryptHistory_1 (String password, LoginFeatures lf, int features_length) throws Exception {
+		// Retrieve alpha beta values for this login attempt
+		BigInteger hpwd_sum = new BigInteger("0");
+		Path instruction_path = Paths.get(ab_dir + lf.username + String.valueOf(lf.fingerprint) +".ab");
+		byte[] instruction_bytes = Files.readAllBytes(instruction_path);
+		byte[] instruction_key = password.getBytes();
+		instruction_key = Arrays.copyOf(instruction_key, 16);
+		SecretKeySpec secretkeyspec = new SecretKeySpec(instruction_key,"AES");
+		Cipher cipher = Cipher.getInstance("AES");
+		String instruction_decrypted_string = null;
+		try {
+			cipher.init(Cipher.DECRYPT_MODE, secretkeyspec);
+			byte[] instruction_decrypted = cipher.doFinal(instruction_bytes);
+			instruction_decrypted_string = new String(instruction_decrypted);
+		} catch (BadPaddingException e) {
+			System.out.println(e.getMessage());
+			writeLog(lf,"Couldnot decrypt Instruction file",null,null);
+			return new FuncReturn(new Greeting(lf.username,false,"Couldnot decrypt Instruction file"),hpwd_sum);
+		}	
+		Scanner scan = new Scanner(instruction_decrypted_string);
+		if(!scan.nextLine().equals("Instruction File")) {
+			scan.close();
+			log.info("Wrong password");
+			//return false;
+			writeLog(lf,"Wrong text password",null,null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong password"),hpwd_sum);
+		}
+		
+		//int features_length = lf.features.length;
+		BigInteger[] alpha = new BigInteger[features_length],
+					  beta = new BigInteger[features_length];
+	
+		for(int i = 0; i < features_length; ++i) {
+			alpha[i] = new BigInteger(scan.nextLine());
+			beta[i]  = new BigInteger(scan.nextLine());
+		}
+		scan.close();
+			
+		// Calculate X and Y values
+		BigInteger X[] = new BigInteger[features_length],
+		           Y[] = new BigInteger[features_length];
+		
+		boolean hist_decrypt_success = false;
+		//BigInteger hpwd_sum = new BigInteger("0");
+		String hist_decrypted_string = null;
+		Scanner hist_file_scanner = null;
+									
+		// Introducing 1 error correction
+		int m=0;	
+		while ( m < features_length) {
+			for(int i = 0; i < features_length; ++i) {
+				if(i >= m && i<m+1) {
+					if(lf.features[i] >= THRESH) {
+						X[i] = BigInteger.valueOf((i + 1) << 1);
+						BigInteger gr_pwd = calculate_hash(password, (i + 1) << 1);
+						Y[i] = alpha[i].divide(gr_pwd.mod(q));
+					} else {
+						X[i] = BigInteger.valueOf(((i + 1) << 1) + 1);
+						BigInteger gr_pwd = calculate_hash(password, ((i + 1) << 1) + 1);
+						Y[i] = beta[i].divide(gr_pwd.mod(q));
+					}
+				} else {
+					if(lf.features[i] < THRESH) {
+						X[i] = BigInteger.valueOf((i + 1) << 1);
+						BigInteger gr_pwd = calculate_hash(password, (i + 1) << 1);
+						Y[i] = alpha[i].divide(gr_pwd.mod(q));
+					} else {
+						X[i] = BigInteger.valueOf(((i + 1) << 1) + 1);
+						BigInteger gr_pwd = calculate_hash(password, ((i + 1) << 1) + 1);
+						Y[i] = beta[i].divide(gr_pwd.mod(q));
+					}
+				}
+			}
+			//do all processing
+			// Calculate lambda - Lagrange's Coefficient
+			BigInteger[] lambda = new BigInteger[features_length];
+			for(int i = 0; i < features_length; ++i) {
+				BigInteger lambda_num = new BigInteger("1"),
+				           lambda_den = new BigInteger("1");
+				lambda[i] = new BigInteger("1");
+				for(int j = 0; j < features_length; ++j) {
+					if(i != j) {
+						lambda_num = lambda_num.multiply(X[j]);
+						lambda_den = lambda_den.multiply(X[j].subtract(X[i]));
+					}
+				}
+				lambda[i] = lambda[i].multiply(Y[i]).multiply(lambda_num);
+				lambda[i] = lambda[i].divide(lambda_den);
+			}
+				
+			// Calculate hpwd' - new hardened password
+			hpwd_sum = new BigInteger("0");
+			for(int i = 0; i < features_length; ++i) {
+				hpwd_sum = hpwd_sum.add(lambda[i]).mod(q);
+			}
+			System.out.println("Calculated hpwd : " + hpwd_sum);
+						
+			// Open the history file for this login attempt
+			Path hist_path = Paths.get(hist_dir + lf.username + String.valueOf(lf.fingerprint) +".hist");
+			byte[] hist_bytes = Files.readAllBytes(hist_path);
+			byte[] hist_key = hpwd_sum.toByteArray();
+			hist_key = Arrays.copyOf(hist_key, 16);
+			secretkeyspec = new SecretKeySpec(hist_key,"AES");
+			cipher = Cipher.getInstance("AES");
+			
+			try {
+				cipher.init(Cipher.DECRYPT_MODE, secretkeyspec);
+				byte[] hist_decrypted = cipher.doFinal(hist_bytes);
+				hist_decrypted_string = new String(hist_decrypted);
+			} catch (BadPaddingException e) {
+				log.info("Could not decrypt history file");
+				//writeLog(lf,"Couldnot decrypt history file",feat_means, feat_devs);
+				//return new Greeting(lf.username,false,"Couldnot decrypt history file");
+				m = m+1;
+				continue;
+			}
+						
+			// Verify that the static string in history file retrieved is correct
+			hist_file_scanner = new Scanner(hist_decrypted_string);
+			String hist_magic_text = hist_file_scanner.nextLine();
+			if(!HIST_TEXT.equals(hist_magic_text)) {
+				hist_file_scanner.close();
+				log.info("Wrong hardened password..Nice try..!");
+				//writeLog(lf,"Wrong hardened password",feat_means, feat_devs);
+				//return new Greeting(lf.username,false,"Wrong hardened password");
+				m = m+1;
+				continue;
+			} else {
+				hist_decrypt_success = true;
+				break;
+			}
+		}
+					
+		if(!hist_decrypt_success) {
+			writeLog(lf,"Wrong hardened password-after correction",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong hardened password"),hpwd_sum);
+		}		
+		hist_file_scanner.close();
+
+		return new FuncReturn(new Greeting(lf.username,true, hist_decrypted_string),hpwd_sum);
+	}
+	
+	/** Function to correct two errors in latency features
+	 * 
+	 * @param password
+	 * @param lf
+	 * @return
+	 * @throws Exception
+	 */
+	private static FuncReturn decryptHistory_2 (String password, LoginFeatures lf, int features_length) throws Exception {
+		// Retrieve alpha beta values for this login attempt
+		BigInteger hpwd_sum = new BigInteger("0");
+		Path instruction_path = Paths.get(ab_dir + lf.username + String.valueOf(lf.fingerprint) +".ab");
+		byte[] instruction_bytes = Files.readAllBytes(instruction_path);
+		byte[] instruction_key = password.getBytes();
+		instruction_key = Arrays.copyOf(instruction_key, 16);
+		SecretKeySpec secretkeyspec = new SecretKeySpec(instruction_key,"AES");
+		Cipher cipher = Cipher.getInstance("AES");
+		String instruction_decrypted_string = null;
+		try {
+			cipher.init(Cipher.DECRYPT_MODE, secretkeyspec);
+			byte[] instruction_decrypted = cipher.doFinal(instruction_bytes);
+			instruction_decrypted_string = new String(instruction_decrypted);
+		} catch (BadPaddingException e) {
+			System.out.println(e.getMessage());
+			writeLog(lf,"Couldnot decrypt Instruction file",null,null);
+			return new FuncReturn(new Greeting(lf.username,false,"Couldnot decrypt Instruction file"),hpwd_sum);
+		}	
+		Scanner scan = new Scanner(instruction_decrypted_string);
+		if(!scan.nextLine().equals("Instruction File")) {
+			scan.close();
+			log.info("Wrong password");
+			//return false;
+			writeLog(lf,"Wrong text password",null,null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong password"),hpwd_sum);
+		}
+		
+		//int features_length = lf.features.length;
+		BigInteger[] alpha = new BigInteger[features_length],
+					  beta = new BigInteger[features_length];
+	
+		for(int i = 0; i < features_length; ++i) {
+			alpha[i] = new BigInteger(scan.nextLine());
+			beta[i]  = new BigInteger(scan.nextLine());
+		}
+		scan.close();
+			
+		// Calculate X and Y values
+		BigInteger X[] = new BigInteger[features_length],
+		           Y[] = new BigInteger[features_length];
+		
+		boolean hist_decrypt_success = false;
+		//BigInteger hpwd_sum = new BigInteger("0");
+		String hist_decrypted_string = null;
+		Scanner hist_file_scanner = null;
+									
+		// Introducing 1 error correction
+		//while ( m < features_length) {
+		for(int k=0; k<features_length; k++) {
+		for(int l=k+1; l<features_length; l++) {
+			for(int i = 0; i < features_length; ++i) {
+				if(i == l || i== k) {
+					if(lf.features[i] >= THRESH) {
+						X[i] = BigInteger.valueOf((i + 1) << 1);
+						BigInteger gr_pwd = calculate_hash(password, (i + 1) << 1);
+						Y[i] = alpha[i].divide(gr_pwd.mod(q));
+					} else {
+						X[i] = BigInteger.valueOf(((i + 1) << 1) + 1);
+						BigInteger gr_pwd = calculate_hash(password, ((i + 1) << 1) + 1);
+						Y[i] = beta[i].divide(gr_pwd.mod(q));
+					}
+				} else {
+					if(lf.features[i] < THRESH) {
+						X[i] = BigInteger.valueOf((i + 1) << 1);
+						BigInteger gr_pwd = calculate_hash(password, (i + 1) << 1);
+						Y[i] = alpha[i].divide(gr_pwd.mod(q));
+					} else {
+						X[i] = BigInteger.valueOf(((i + 1) << 1) + 1);
+						BigInteger gr_pwd = calculate_hash(password, ((i + 1) << 1) + 1);
+						Y[i] = beta[i].divide(gr_pwd.mod(q));
+					}
+				}
+			}
+			//do all processing
+			// Calculate lambda - Lagrange's Coefficient
+			BigInteger[] lambda = new BigInteger[features_length];
+			for(int i = 0; i < features_length; ++i) {
+				BigInteger lambda_num = new BigInteger("1"),
+				           lambda_den = new BigInteger("1");
+				lambda[i] = new BigInteger("1");
+				for(int j = 0; j < features_length; ++j) {
+					if(i != j) {
+						lambda_num = lambda_num.multiply(X[j]);
+						lambda_den = lambda_den.multiply(X[j].subtract(X[i]));
+					}
+				}
+				lambda[i] = lambda[i].multiply(Y[i]).multiply(lambda_num);
+				lambda[i] = lambda[i].divide(lambda_den);
+			}
+				
+			// Calculate hpwd' - new hardened password
+			hpwd_sum = new BigInteger("0");
+			for(int i = 0; i < features_length; ++i) {
+				hpwd_sum = hpwd_sum.add(lambda[i]).mod(q);
+			}
+			System.out.println("Calculated hpwd : " + hpwd_sum);
+						
+			// Open the history file for this login attempt
+			Path hist_path = Paths.get(hist_dir + lf.username + String.valueOf(lf.fingerprint) +".hist");
+			byte[] hist_bytes = Files.readAllBytes(hist_path);
+			byte[] hist_key = hpwd_sum.toByteArray();
+			hist_key = Arrays.copyOf(hist_key, 16);
+			secretkeyspec = new SecretKeySpec(hist_key,"AES");
+			cipher = Cipher.getInstance("AES");
+			
+			try {
+				cipher.init(Cipher.DECRYPT_MODE, secretkeyspec);
+				byte[] hist_decrypted = cipher.doFinal(hist_bytes);
+				hist_decrypted_string = new String(hist_decrypted);
+			} catch (BadPaddingException e) {
+				log.info("Could not decrypt history file");
+				//writeLog(lf,"Couldnot decrypt history file",feat_means, feat_devs);
+				//return new Greeting(lf.username,false,"Couldnot decrypt history file");
+				continue;
+			}
+						
+			// Verify that the static string in history file retrieved is correct
+			hist_file_scanner = new Scanner(hist_decrypted_string);
+			String hist_magic_text = hist_file_scanner.nextLine();
+			if(!HIST_TEXT.equals(hist_magic_text)) {
+				hist_file_scanner.close();
+				log.info("Wrong hardened password..Nice try..!");
+				//writeLog(lf,"Wrong hardened password",feat_means, feat_devs);
+				//return new Greeting(lf.username,false,"Wrong hardened password");
+				continue;
+			} else {
+				hist_decrypt_success = true;
+				break;
+			}
+		}
+			if(hist_decrypt_success) {
+				break;
+			} else {
+				continue;
+			}
+		}
+					
+		if(!hist_decrypt_success) {
+			writeLog(lf,"Wrong hardened password-after correction",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong hardened password"),hpwd_sum);
+		}		
+		hist_file_scanner.close();
+
+		return new FuncReturn(new Greeting(lf.username,true, hist_decrypted_string),hpwd_sum);
+	}
+	
 	
 	/**
 	 * Function to encrypt charArray contents using byteArray key
@@ -620,6 +915,15 @@ public class SecLogin {
 			this.fingerprint = fingerprint;
 			features = new int[latency.length];
 			this.features = latency;
+		}
+	}
+	
+	private static class FuncReturn {
+		public Greeting greeting;
+		public BigInteger new_hpwd;
+		public FuncReturn(Greeting greeting, BigInteger new_hpwd) {
+			this.greeting = greeting;
+			this.new_hpwd = new_hpwd;
 		}
 	}
 	
