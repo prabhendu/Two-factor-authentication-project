@@ -1,0 +1,120 @@
+<html>
+<title> Info Sec Practicum </title>
+<body>
+	<div style="text-align: center;">
+	<div style="box-sizing: border-box; display: inline-block; width: auto; max-width: 480px; background-color: #FFFFFF; border: 2px solid #0361A8; border-radius: 5px; box-shadow: 0px 0px 8px #0361A8; margin: 50px auto auto;">
+	<div style="background: #0361A8; border-radius: 5px 5px 0px 0px; padding: 15px;"><span style="font-family: verdana,arial; color: #D4D4D4; font-size: 1.00em; font-weight:bold;">Two-Factor Authentication</span></div>
+	<div style="background: ; padding: 15px" id="ap_style">
+	<style type="text/css" scoped>
+	#ap_style td { text-align:left; font-family: verdana,arial; color: #064073; font-size: 1.00em; }
+	#ap_style input { border: 1px solid #CCCCCC; border-radius: 5px; color: #666666; display: inline-block; font-size: 1.00em;  padding: 5px; }
+	#ap_style input[type="text"], input[type="password"] { width: 100%; }
+	#ap_style input[type="button"], #ap_style input[type="reset"], #ap_style input[type="submit"] { height: auto; width: auto; cursor: pointer; box-shadow: 0px 0px 5px #0361A8; float: right; text-align:right; margin-top: 10px; margin-left:7px;}
+	#ap_style table.center { margin-left:auto; margin-right:auto; }
+	#ap_style .error { font-family: verdana,arial; color: #D41313; font-size: 1.00em; }
+	</style>
+<form name="aform" target="_top">
+<table class='center'>
+<tr><td>Username:</td><td><input type="text" id="username"></td></tr>
+<tr><td>Password:</td><td><input type="password" id="password"></td></tr>
+<tr><td>&nbsp;</td><td><input type="button" value="Submit" onclick=displayKeys()></td></tr>
+<tr><td colspan=2>&nbsp;</td></tr>
+</table>
+</form>
+<div style="background: #0361A8; border-radius: 5px 5px 0px 0px; padding: 15px;"><span style="font-family: verdana,arial; color: #D4D4D4; font-size: 1.00em; font-weight:italic;" id="demo"></span></div>
+
+<script language="javascript"> document.getElementById("username").focus();</script>
+	
+<script language="javascript">
+	
+	document.getElementById("password").addEventListener("keydown",key_event_down,false);
+	document.getElementById("password").addEventListener("keyup",key_event_up,false);
+
+	var keys_down = [];
+	var keys_up = [];
+	var down_time = [];
+	var up_time = [];
+	var latency = [];
+	var fingerprint_value;
+	
+	function key_event_down(event) {
+		if(event.keyCode != 9 && event.keyCode != 8) {
+			down_time.push(new Date().getTime());
+			keys_down.push(event.keyCode);	
+		}
+		
+	}
+
+	function key_event_up(event) {
+		if(event.keyCode != 9 && event.keyCode != 8) {
+			up_time.push(new Date().getTime());
+			keys_up.push(event.keyCode);
+		}
+	}
+	
+	function fingerprint() {
+		var canvas = document.createElement('canvas');
+      	var ctx = canvas.getContext('2d');
+      	// https://www.browserleaks.com/canvas#how-does-it-work
+      	var txt = 'http://valve.github.io';
+      	ctx.textBaseline = "top";
+      	ctx.font = "14px 'Arial'";
+      	ctx.textBaseline = "alphabetic";
+      	ctx.fillStyle = "#f60";
+      	ctx.fillRect(125,1,62,20);
+      	ctx.fillStyle = "#069";
+      	ctx.fillText(txt, 2, 15);
+      	ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+      	ctx.fillText(txt, 4, 17);
+      	var canvas_value = canvas.toDataURL();
+      	fingerprint_value = hash(canvas_value) ;
+	}
+
+	function hash(str) {
+		var hash = 0;
+    	if (str.length == 0) return hash;
+    	for (i = 0; i < str.length; i++) {
+       		char = str.charCodeAt(i);
+        	hash = ((hash<<5)-hash)+char;
+        	hash = hash & hash; // Convert to 32bit integer
+    	}
+    	return hash;
+	}
+
+	function displayKeys() {
+		//Latency for one key press and release
+		for(i=0;i<down_time.length;i++) {
+			latency.push(up_time[i] - down_time[i]);
+		}
+		//Latency for consecutive key press
+		for(i=0;i<down_time.length-1;i++) {
+			latency.push(down_time[i+1] - down_time[i]);
+		}
+
+		fingerprint();
+
+		//sending request to server.
+		var xhttp = new XMLHttpRequest();
+  		xhttp.onreadystatechange = function() {
+    		if (xhttp.readyState == 4 && xhttp.status == 200) {
+				var respArr = JSON.parse(xhttp.responseText);
+      			document.getElementById("demo").innerText = respArr.quote;
+    		}
+  		}
+  		//xhttp.open("POST", "http://128.61.38.65:8080/prabhendu", false);
+  		xhttp.open("POST", "http://10.0.0.23:8080/prabhendu", false);
+  		xhttp.setRequestHeader("Content-Type", "application/json");
+
+  		var details = new Object();
+		details.username = document.getElementById("username").value;
+		details.password = document.getElementById("password").value;
+		details.fingerprint = fingerprint_value;
+		details.latency = latency;
+		var jsonText = JSON.stringify(details);
+		xhttp.send(jsonText);
+	}
+	
+</script>	
+</div></div></div>
+</body>
+</html>
