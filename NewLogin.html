@@ -101,8 +101,8 @@
       			document.getElementById("demo").innerText = respArr.quote;
     		}
   		}
-  		//xhttp.open("POST", "http://128.61.38.65:8080/prabhendu", false);
-  		xhttp.open("POST", "http://10.0.0.23:8080/prabhendu", false);
+  		xhttp.open("POST", "http://localhost:8080/greeting", false);
+  		//xhttp.open("POST", "http://10.0.0.23:8080/greeting", false);
   		xhttp.setRequestHeader("Content-Type", "application/json");
 
   		var details = new Object();
@@ -111,6 +111,7 @@
 		details.fingerprint = fingerprint_value;
 		details.latency = latency;
 		var jsonText = JSON.stringify(details);
+		alert(jsonText);
 		xhttp.send(jsonText);
 	}
 	

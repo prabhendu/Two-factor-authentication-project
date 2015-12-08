@@ -47,10 +47,10 @@ public class SecLogin {
 			new BigInteger("957117109103230102421885836974304804951875593197");
 	
 	/** Static k */
-	private static final double k = 0.5;
+	private static final double k = 0.3;
 	
 	/** Number of logins for sampling user keystroke dynamics */
-	private static final int n = 10;
+	private static final int n = 8;
 	
 	/** Distinguishing feature count */
 	//private static final int DIST_FEAT_CNT = 15;
@@ -62,13 +62,13 @@ public class SecLogin {
 	private static final Logger log = Logger.getLogger(SecLogin.class.getName());
 	
 	/** Directory of history files */
-	private static final String hist_dir = "hist1/";
+	private static final String hist_dir = "hist0.3/";
 	
 	/** Directory of instruction files */
-	private static final String ab_dir = "ab1/";
+	private static final String ab_dir = "ab0.3/";
 	
 	/** Directory of log files */
-	private static final String log_dir = "log1/";
+	private static final String log_dir = "log0.3/";
 	
 	
 	/**
@@ -231,46 +231,6 @@ public class SecLogin {
 		} else {
 			// Code part for subsequent logins (after initial login)
 			
-			// Retrieve alpha beta values for this login attempt
-//			Path instruction_path = Paths.get(ab_dir + lf.username + String.valueOf(lf.fingerprint) +".ab");
-//			byte[] instruction_bytes = Files.readAllBytes(instruction_path);
-//			byte[] instruction_key = password.getBytes();
-//			instruction_key = Arrays.copyOf(instruction_key, 16);
-//			SecretKeySpec secretkeyspec = new SecretKeySpec(instruction_key,"AES");
-//			Cipher cipher = Cipher.getInstance("AES");
-//			String instruction_decrypted_string = null;
-//			try {
-//				cipher.init(Cipher.DECRYPT_MODE, secretkeyspec);
-//				byte[] instruction_decrypted = cipher.doFinal(instruction_bytes);
-//				instruction_decrypted_string = new String(instruction_decrypted);
-//			} catch (BadPaddingException e) {
-//				System.out.println(e.getMessage());
-//				writeLog(lf,"Couldnot decrypt Instruction file",feat_means, feat_devs);
-//				return new Greeting(lf.username,false,"Couldnot decrypt Instruction file");
-//			}	
-//			Scanner scan = new Scanner(instruction_decrypted_string);
-//			if(!scan.nextLine().equals("Instruction File")) {
-//				scan.close();
-//				log.info("Wrong password");
-//				//return false;
-//				writeLog(lf,"Wrong text password",feat_means, feat_devs);
-//				return new Greeting(lf.username,false,"Wrong password");
-//			}
-//			
-//			for(int i = 0; i < features_length; ++i) {
-//				alpha[i] = new BigInteger(scan.nextLine());
-//				beta[i]  = new BigInteger(scan.nextLine());
-//			}
-//			scan.close();
-//			
-//			// Calculate X and Y values
-//			BigInteger X[] = new BigInteger[features_length],
-//			           Y[] = new BigInteger[features_length];
-//			
-//			boolean hist_decrypt_success = false;
-//			BigInteger hpwd_sum = new BigInteger("0");
-//			Scanner hist_file_scanner = null;
-			
 			FuncReturn result = null;
 			for(int i=0;i<=max_errors;i++) {
 				switch(i) {
@@ -288,20 +248,20 @@ public class SecLogin {
 					break;
 				}
 				
-				if (result.greeting.getAttempt() == false) {
+				if (result.greeting.getAttempt() == false && 
+						!result.greeting.getQuote().equals("Wrong textual password")) {
 					System.out.format("Login failed when max_error correction is %d\n", i);
 					continue;
 				} else {
 					break;
 				}
-				
 			}
 			
 			//FuncReturn result = decryptHistory_1(password, lf, features_length);
-			
 			if (result.greeting.getAttempt() == false) {
 				return result.greeting;
 			}
+			
 			BigInteger hpwd_sum = result.new_hpwd;
 			
 			// Read history file contents
@@ -460,16 +420,16 @@ public class SecLogin {
 			instruction_decrypted_string = new String(instruction_decrypted);
 		} catch (BadPaddingException e) {
 			System.out.println(e.getMessage());
-			writeLog(lf,"Couldnot decrypt Instruction file",null, null);
-			return new FuncReturn(new Greeting(lf.username,false,"Couldnot decrypt Instruction file"),hpwd_sum);
+			writeLog(lf,"Wrong textual password",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong textual password"),hpwd_sum);
 		}	
 		Scanner scan = new Scanner(instruction_decrypted_string);
 		if(!scan.nextLine().equals("Instruction File")) {
 			scan.close();
-			log.info("Wrong password");
+			log.info("Wrong textual password");
 			//return false;
-			writeLog(lf,"Wrong text password",null, null);
-			return new FuncReturn(new Greeting(lf.username,false,"Wrong password"),hpwd_sum);
+			writeLog(lf,"Wrong textual password",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong textual password"),hpwd_sum);
 		}
 		
 		//int features_length = lf.features.length;
@@ -534,8 +494,8 @@ public class SecLogin {
 			byte[] hist_decrypted = cipher.doFinal(hist_bytes);
 			hist_decrypted_string = new String(hist_decrypted);
 		} catch (BadPaddingException e) {
-			writeLog(lf,"Couldnot decrypt history file",null, null);
-			return new FuncReturn(new Greeting(lf.username,false,"Couldnot decrypt history file"),hpwd_sum);
+			writeLog(lf,"Wrong hardened password - Error 0",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong hardened password - Error 0"),hpwd_sum);
 		}
 		
 		// Verify that the static string in history file retrieved is correct
@@ -543,9 +503,9 @@ public class SecLogin {
 		String hist_magic_text = hist_file_scanner.nextLine();
 		if(!HIST_TEXT.equals(hist_magic_text)) {
 			hist_file_scanner.close();
-			log.info("Wrong hardened password..Nice try..!");
-			writeLog(lf,"Wrong hardened password",null, null);
-			return new FuncReturn(new Greeting(lf.username,false,"Wrong hardened password"),hpwd_sum);
+			log.info("Wrong hardened password - Error 0");
+			writeLog(lf,"Wrong hardened password - Error 0",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong hardened password - Error 0"),hpwd_sum);
 		}
 		
 		hist_file_scanner.close();
@@ -576,16 +536,16 @@ public class SecLogin {
 			instruction_decrypted_string = new String(instruction_decrypted);
 		} catch (BadPaddingException e) {
 			System.out.println(e.getMessage());
-			writeLog(lf,"Couldnot decrypt Instruction file",null,null);
-			return new FuncReturn(new Greeting(lf.username,false,"Couldnot decrypt Instruction file"),hpwd_sum);
+			writeLog(lf,"Wrong textual password",null,null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong textual password"),hpwd_sum);
 		}	
 		Scanner scan = new Scanner(instruction_decrypted_string);
 		if(!scan.nextLine().equals("Instruction File")) {
 			scan.close();
-			log.info("Wrong password");
+			log.info("Wrong textual password");
 			//return false;
-			writeLog(lf,"Wrong text password",null,null);
-			return new FuncReturn(new Greeting(lf.username,false,"Wrong password"),hpwd_sum);
+			writeLog(lf,"Wrong textual password",null,null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong textual password"),hpwd_sum);
 		}
 		
 		//int features_length = lf.features.length;
@@ -670,7 +630,7 @@ public class SecLogin {
 				byte[] hist_decrypted = cipher.doFinal(hist_bytes);
 				hist_decrypted_string = new String(hist_decrypted);
 			} catch (BadPaddingException e) {
-				log.info("Could not decrypt history file");
+				log.info("Wrong hardened password - Error 1");
 				//writeLog(lf,"Couldnot decrypt history file",feat_means, feat_devs);
 				//return new Greeting(lf.username,false,"Couldnot decrypt history file");
 				m = m+1;
@@ -682,7 +642,7 @@ public class SecLogin {
 			String hist_magic_text = hist_file_scanner.nextLine();
 			if(!HIST_TEXT.equals(hist_magic_text)) {
 				hist_file_scanner.close();
-				log.info("Wrong hardened password..Nice try..!");
+				log.info("Wrong hardened password - Error 1");
 				//writeLog(lf,"Wrong hardened password",feat_means, feat_devs);
 				//return new Greeting(lf.username,false,"Wrong hardened password");
 				m = m+1;
@@ -694,8 +654,8 @@ public class SecLogin {
 		}
 					
 		if(!hist_decrypt_success) {
-			writeLog(lf,"Wrong hardened password-after correction",null, null);
-			return new FuncReturn(new Greeting(lf.username,false,"Wrong hardened password"),hpwd_sum);
+			writeLog(lf,"Wrong hardened password - Error 1",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong hardened password - Error 1"),hpwd_sum);
 		}		
 		hist_file_scanner.close();
 
@@ -725,16 +685,16 @@ public class SecLogin {
 			instruction_decrypted_string = new String(instruction_decrypted);
 		} catch (BadPaddingException e) {
 			System.out.println(e.getMessage());
-			writeLog(lf,"Couldnot decrypt Instruction file",null,null);
-			return new FuncReturn(new Greeting(lf.username,false,"Couldnot decrypt Instruction file"),hpwd_sum);
+			writeLog(lf,"Wrong textual password",null,null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong textual password"),hpwd_sum);
 		}	
 		Scanner scan = new Scanner(instruction_decrypted_string);
 		if(!scan.nextLine().equals("Instruction File")) {
 			scan.close();
-			log.info("Wrong password");
+			log.info("Wrong textual password");
 			//return false;
-			writeLog(lf,"Wrong text password",null,null);
-			return new FuncReturn(new Greeting(lf.username,false,"Wrong password"),hpwd_sum);
+			writeLog(lf,"Wrong textual password",null,null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong textual password"),hpwd_sum);
 		}
 		
 		//int features_length = lf.features.length;
@@ -820,7 +780,7 @@ public class SecLogin {
 				byte[] hist_decrypted = cipher.doFinal(hist_bytes);
 				hist_decrypted_string = new String(hist_decrypted);
 			} catch (BadPaddingException e) {
-				log.info("Could not decrypt history file");
+				log.info("Wrong hardened password - Error 2");
 				//writeLog(lf,"Couldnot decrypt history file",feat_means, feat_devs);
 				//return new Greeting(lf.username,false,"Couldnot decrypt history file");
 				continue;
@@ -831,7 +791,7 @@ public class SecLogin {
 			String hist_magic_text = hist_file_scanner.nextLine();
 			if(!HIST_TEXT.equals(hist_magic_text)) {
 				hist_file_scanner.close();
-				log.info("Wrong hardened password..Nice try..!");
+				log.info("Wrong hardened password - Error 2");
 				//writeLog(lf,"Wrong hardened password",feat_means, feat_devs);
 				//return new Greeting(lf.username,false,"Wrong hardened password");
 				continue;
@@ -848,8 +808,8 @@ public class SecLogin {
 		}
 					
 		if(!hist_decrypt_success) {
-			writeLog(lf,"Wrong hardened password-after correction",null, null);
-			return new FuncReturn(new Greeting(lf.username,false,"Wrong hardened password"),hpwd_sum);
+			writeLog(lf,"Wrong hardened password - Error 2",null, null);
+			return new FuncReturn(new Greeting(lf.username,false,"Wrong hardened password - Error 2"),hpwd_sum);
 		}		
 		hist_file_scanner.close();
 

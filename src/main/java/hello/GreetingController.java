@@ -20,15 +20,15 @@ public class GreetingController {
     
     private static final Logger log = Logger.getLogger(GreetingController.class.getName());
 
-    @RequestMapping("/greeting")
-    public @ResponseBody Greeting greeting(@RequestParam(value="name", defaultValue="World") String name) {
+    @RequestMapping("/prabhendu")
+    public @ResponseBody Greeting prabhendu(@RequestParam(value="name", defaultValue="World") String name) {
     	log.info("Hello logging..Prabhendu in Greeting...buckle up");
     	return new Greeting("test", false,
                             String.format(template, name));
     }
     
-    @RequestMapping(method=RequestMethod.POST ,value = "/prabhendu")
-    public @ResponseBody Greeting prabhendu(@RequestBody InputModel test) throws Exception {
+    @RequestMapping(method=RequestMethod.POST ,value = "/greeting")
+    public @ResponseBody Greeting greeting(@RequestBody InputModel test) throws Exception {
     	
     	log.info("ID : " + test.getUsername());
     	log.info("fingerprint : " + test.getFingerprint());
