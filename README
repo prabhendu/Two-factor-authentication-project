@@ -1,0 +1,35 @@
+Two-Factor Authentication System for Web Applications:
+------------------------------------------------------
+
+Main Components:
+-----------------
+
+	1) Client-Side:
+
+		- NewLogin.html :
+		  Test Login page created with a simple HTML form.
+		  Main part is the javscript writtem to capture keystroke,
+		  calculate latency, compute canvas fingerprint, generate
+		  hash of it, create a JSON object and send it to the REST
+		  service implemented.
+
+	2) Server-Side:
+
+		- run.sh :                : wrapper to run the service.
+		- Application.java        : Main class which involes the SPRING service.
+		- InputModel.java         : Class to represent the request JSON object.
+		- Greeting.java           : Class to represent the response JSON object.
+		- GreetingController.java : Controller to map the service from url to class.
+		- SimpleCORSFilter.java   : Class to allow cross-origin requests.
+		- SecLogin.java           : Class which implements the algorithm.
+
+
+How to run the service:
+-----------------------
+- Execute ./run.sh to start the service.
+- Access the client login page using http://address:port/NewLogin.html (address:port correspond to server).
+  In case our login page is not used, javascript can be included in any page to be used as login. 
+
+Link to public repository:
+---------------------------
+ https://github.com/prabhendu/Two-factor-authentication-project
